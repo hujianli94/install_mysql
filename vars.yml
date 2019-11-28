@@ -1,0 +1,7 @@
+
+mysql_root_password: Futong666,
+mysql_root_password_update: true
+overwrite_global_mycnf: no
+mysql_enablerepo: ""
+mysql_version: mysql51
+host_name: kfalmpqqtr

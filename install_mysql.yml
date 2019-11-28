@@ -1,0 +1,93 @@
+- hosts: "{{ host_name }}"
+  strategy: debug
+  become: yes
+  remote_user: root
+  gather_facts: True
+  vars_files:
+    - vars.yml
+
+  pre_tasks:
+    - name: Install the MySQL repo.
+      yum:
+        name: https://repo.mysql.com//mysql80-community-release-el7-3.noarch.rpm
+        state: present
+      when: ansible_facts['distribution'] == "CentOS" and ansible_facts['distribution_major_version'] == "7" and mysql_version != "mysql51"
+
+    - name: Install the MySQL repo.
+      yum:
+        name: https://repo.mysql.com//mysql80-community-release-el6-3.noarch.rpm
+        state: present
+      when: ansible_facts['distribution'] == "CentOS" and ansible_facts['distribution_major_version'] == "6" and mysql_version != "mysql51"
+
+    - name: "启用mysql80 yum源"
+      shell: yum-config-manager --enable mysql80-community
+      when: mysql_version == "mysql80"
+
+    - name: "禁用mysql80 yum源, 启用mysql57 yum源"
+      shell: yum-config-manager --disable mysql80-community && yum-config-manager --enable mysql57-community
+      when: mysql_version == "mysql57"
+
+    - name: "禁用mysql80 yum源, 启用mysql56 yum源"
+      shell: yum-config-manager --disable mysql80-community && yum-config-manager --enable mysql56-community
+      when: mysql_version == "mysql56"
+
+    - name: "禁用mysql80 yum源, 启用mysql55 yum源"
+      shell: yum-config-manager --disable mysql80-community && yum-config-manager --enable mysql55-community
+      when: mysql_version == "mysql55"
+
+    - name: Override variables for MySQL (RedHat).
+      set_fact:
+        mysql_daemon: mysqld
+        mysql_packages: ['mysql-server']
+      when: ansible_facts['distribution'] == "CentOS"
+
+  tasks:
+    - name: Ensure MySQL packages are installed.
+      yum:
+        name: "{{ mysql_packages }}"
+        state: present
+        enablerepo: "{{ mysql_enablerepo | default(omit, true) }}"
+      register: rh_mysql_install_packages
+      when: mysql_version != "mysql51" or (ansible_facts['distribution'] == "CentOS" and ansible_facts['distribution_major_version'] == "6" and mysql_version == "mysql51")
+
+    - name: 创建安装文件夹
+      file:
+        path: ~/install_mysql
+        state: directory
+      when: ansible_facts['distribution'] == "CentOS" and ansible_facts['distribution_major_version'] == "7" and mysql_version == "mysql51"
+
+    - name: 复制mysql安装包到目标服务器
+      copy: src=mysql-5.1.73.tar.gz dest=~/install_mysql
+      when: ansible_facts['distribution'] == "CentOS" and ansible_facts['distribution_major_version'] == "7" and mysql_version == "mysql51"
+
+    - name: 在centos7上安装mysql5.1
+      script: "mysql5.1.73_centos7.sh {{ mysql_root_password }}"
+      when: ansible_facts['distribution'] == "CentOS" q and mysql_version == "mysql51"
+
+    - name: "等待mysql启动"
+      shell: sleep 10
+
+    - name: Get MySQL version.
+      command: 'mysql --version'
+      register: mysql_cli_version
+      changed_when: false
+      check_mode: false
+
+    - name: Ensure MySQL is started and enabled on boot.
+      service: "name={{ mysql_daemon }} state=started enabled=true"
+      register: mysql_service_configuration
+      when: mysql_version != "mysql51" or (ansible_facts['distribution'] == "CentOS" and ansible_facts['distribution_major_version'] == "6" and mysql_version == "mysql51")
+
+    - name: install expect
+      yum: name=expect state=present
+
+    - name: "修改mysql5.7/8.0 root 密码"
+      script: "mysql_user.sh {{ mysql_root_password }}"
+      when: mysql_version == "mysql57" or mysql_version == "mysql80"
+
+    - name: "修改mysql5.6/5.5/5.1 root 密码"
+      script: "mysql56_user.sh {{ mysql_root_password }}"
+      when: mysql_version == "mysql55" or mysql_version == "mysql56" or mysql_version == "mysql51"
+
+    - name: "INSTALL MYSQL SUCCESS"
+      script: echo "a"
